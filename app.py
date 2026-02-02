@@ -3,104 +3,129 @@ import pandas as pd
 import numpy as np
 import joblib
 
-# ================= CONFIG =================
-st.set_page_config(page_title="Real Estate Investment Advisor", layout="wide")
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(
+    page_title="Real Estate Investment Advisor",
+    layout="wide"
+)
 
-# ================= LOAD MODELS =================
-scaler = joblib.load("models/scaler.pkl")
-clf_model = joblib.load("models/classification_model.pkl")
-reg_model = joblib.load("models/regression_model.pkl")
-feature_columns = joblib.load("models/feature_columns.pkl")
-
-# ================= LOAD DATA =================
+# ---------------- LOAD ASSETS ----------------
 @st.cache_data
 def load_data():
     return pd.read_csv("data/cleaned_real_estate_data_small.csv")
 
-df = load_data()
+@st.cache_resource
+def load_models():
+    reg_model = joblib.load("models/regression_model.pkl")
+    scaler = joblib.load("models/scaler.pkl")
+    feature_cols = joblib.load("models/feature_columns.pkl")
+    return reg_model, scaler, feature_cols
 
-# ================= SIDEBAR =================
+
+df = load_data()
+reg_model, scaler, feature_cols = load_models()
+
+# ---------------- SIDEBAR ----------------
 st.sidebar.title("Navigation")
 page = st.sidebar.radio(
     "Go to",
     ["Introduction", "EDA Visualizations", "Prediction"]
 )
 
-# ================= INTRO =================
+# ---------------- INTRO ----------------
 if page == "Introduction":
-    st.title("🏡 Real Estate Investment Advisor")
+    st.title("🏠 Real Estate Investment Advisor")
     st.write("""
     This application helps investors:
-    - Classify **Good vs Bad Investments**
-    - Predict **Future Property Price**
-    - Explore **Market Trends via EDA**
+    - Predict **future property price (5 years)**
+    - Decide whether a property is a **Good Investment**
+    - Explore **EDA insights**
     """)
 
-# ================= EDA =================
+# ---------------- EDA ----------------
 elif page == "EDA Visualizations":
     st.title("📊 Exploratory Data Analysis")
 
-    st.subheader("Price Distribution")
-    st.bar_chart(df["Price_in_Lakhs"])
-
-    st.subheader("Price per SqFt by City")
-    city_price = df.groupby("City")["Price_per_SqFt"].mean()
+    st.subheader("Average Price per SqFt by City")
+    city_price = df.groupby("City")["Price_per_SqFt"].mean().sort_values()
     st.bar_chart(city_price)
 
-# ================= PREDICTION =================
+# ---------------- PREDICTION ----------------
 else:
     st.title("📈 Property Investment Prediction")
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        city = st.selectbox("City", df["City"].unique())
-        bhk = st.number_input("BHK", 1, 10, 2)
+        city = st.selectbox("City", sorted(df["City"].unique()))
+        bhk = st.number_input("BHK", 1, 5, 2)
         size = st.number_input("Size (Sq Ft)", 300, 5000, 1000)
 
     with col2:
         age = st.number_input("Age of Property (Years)", 0, 50, 5)
         floor_no = st.number_input("Floor No", 0, 50, 2)
-        total_floors = st.number_input("Total Floors", 1, 50, 10)
+        total_floors = st.number_input("Total Floors", 1, 60, 10)
 
     with col3:
         schools = st.number_input("Nearby Schools", 0, 10, 2)
         hospitals = st.number_input("Nearby Hospitals", 0, 10, 1)
 
     if st.button("Predict"):
-        # ========== INPUT DATAFRAME ==========
-        input_dict = {
-            "City": city,
+
+        # ---------------- BUILD INPUT ----------------
+        input_data = {
             "BHK": bhk,
-            "Size_in_SqFt": size,
+            "Size_SqFt": size,
             "Age_of_Property": age,
-            "Nearby_Schools": schools,
-            "Nearby_Hospitals": hospitals,
             "Floor_No": floor_no,
             "Total_Floors": total_floors,
+            "Nearby_Schools": schools,
+            "Nearby_Hospitals": hospitals,
+            "Price_per_SqFt": df[df["City"] == city]["Price_per_SqFt"].mean(),
         }
 
-        input_df = pd.DataFrame([input_dict])
+        input_df = pd.DataFrame([input_data])
 
-        # ========== ENCODE ==========
-        input_df = pd.get_dummies(input_df, drop_first=True)
+        # Align with training features
+        for col in feature_cols:
+            if col not in input_df:
+                input_df[col] = 0
 
-        # ========== ALIGN FEATURES ==========
-        input_df = input_df.reindex(columns=feature_columns, fill_value=0)
+        input_df = input_df[feature_cols]
 
-        # ========== SCALE ==========
+        # ---------------- PRICE PREDICTION ----------------
         input_scaled = scaler.transform(input_df)
-
-        # ========== PREDICT ==========
-        invest_pred = clf_model.predict(input_scaled)[0]
-        invest_prob = clf_model.predict_proba(input_scaled)[0][1]
         future_price = reg_model.predict(input_scaled)[0]
 
-        # ========== OUTPUT ==========
-        if invest_pred == 1:
+        # ---------------- RULE-BASED INVESTMENT LOGIC ----------------
+        city_avg_price = df[df["City"] == city]["Price_per_SqFt"].mean()
+        predicted_price_sqft = future_price / size
+
+        good_investment = (
+            predicted_price_sqft >= city_avg_price and
+            age <= 10 and
+            schools >= 3 and
+            hospitals >= 2
+        )
+
+        # Confidence score (interpretable)
+        confidence = min(
+            0.95,
+            (
+                (predicted_price_sqft / city_avg_price) * 0.4 +
+                (schools / 5) * 0.2 +
+                (hospitals / 5) * 0.2 +
+                ((10 - min(age, 10)) / 10) * 0.2
+            )
+        )
+
+        # ---------------- OUTPUT ----------------
+        if good_investment:
             st.success("✅ Good Investment")
         else:
             st.error("❌ Not a Good Investment")
 
-        st.info(f"Model Confidence: {invest_prob*100:.2f}%")
-        st.metric("Estimated Future Price (5 Years)", f"₹ {future_price:.2f} Lakhs")
+        st.info(f"Model Confidence: {confidence * 100:.2f}%")
+
+        st.subheader("Estimated Future Price (5 Years)")
+        st.write(f"₹ {future_price:,.2f} Lakhs")
