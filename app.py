@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
@@ -44,11 +47,87 @@ if page == "Introduction":
 
 # ---------------- EDA ----------------
 elif page == "EDA Visualizations":
-    st.title("📊 Exploratory Data Analysis")
+    st.title("📊 Exploratory Data Analysis (EDA)")
 
-    st.subheader("Average Price per SqFt by City")
-    city_price = df.groupby("City")["Price_per_SqFt"].mean().sort_values()
-    st.bar_chart(city_price)
+    st.markdown("This section explores property price patterns, size, location impact, and correlations.")
+
+    # ============================
+    # 1️⃣ Average Price per SqFt by City
+    # ============================
+    st.subheader("1️⃣ Average Price per SqFt by City")
+    city_avg = df.groupby("City")["Price_per_SqFt"].mean().sort_values(ascending=False)
+    st.bar_chart(city_avg)
+
+    # ============================
+    # 2️⃣ Distribution of Property Prices
+    # ============================
+    st.subheader("2️⃣ Distribution of Property Prices (Lakhs)")
+    fig, ax = plt.subplots()
+    ax.hist(df["Price_in_Lakhs"], bins=30, edgecolor="black")
+    ax.set_xlabel("Price (Lakhs)")
+    ax.set_ylabel("Count")
+    st.pyplot(fig)
+
+    # ============================
+    # 3️⃣ Distribution of Property Size
+    # ============================
+    st.subheader("3️⃣ Distribution of Property Size (Sq Ft)")
+    fig, ax = plt.subplots()
+    ax.hist(df["Size_in_SqFt"], bins=30, edgecolor="black")
+    ax.set_xlabel("Size (Sq Ft)")
+    ax.set_ylabel("Count")
+    st.pyplot(fig)
+
+    # ============================
+    # 4️⃣ BHK vs Average Price
+    # ============================
+    st.subheader("4️⃣ Average Property Price by BHK")
+    bhk_avg = df.groupby("BHK")["Price_in_Lakhs"].mean()
+    st.bar_chart(bhk_avg)
+
+    # ============================
+    # 5️⃣ Age of Property vs Price
+    # ============================
+    st.subheader("5️⃣ Age of Property vs Price")
+    fig, ax = plt.subplots()
+    ax.scatter(df["Age_of_Property"], df["Price_in_Lakhs"], alpha=0.3)
+    ax.set_xlabel("Age of Property (Years)")
+    ax.set_ylabel("Price (Lakhs)")
+    st.pyplot(fig)
+
+    # ============================
+    # 6️⃣ Nearby Schools vs Price
+    # ============================
+    st.subheader("6️⃣ Nearby Schools vs Average Price")
+    school_avg = df.groupby("Nearby_Schools")["Price_in_Lakhs"].mean()
+    st.line_chart(school_avg)
+
+    # ============================
+    # 7️⃣ Nearby Hospitals vs Price
+    # ============================
+    st.subheader("7️⃣ Nearby Hospitals vs Average Price")
+    hospital_avg = df.groupby("Nearby_Hospitals")["Price_in_Lakhs"].mean()
+    st.line_chart(hospital_avg)
+
+    # ============================
+    # 8️⃣ Correlation Heatmap
+    # ============================
+    st.subheader("8️⃣ Feature Correlation Heatmap")
+    corr_features = [
+        "Price_in_Lakhs",
+        "Price_per_SqFt",
+        "Size_in_SqFt",
+        "BHK",
+        "Age_of_Property",
+        "Nearby_Schools",
+        "Nearby_Hospitals",
+    ]
+
+    corr = df[corr_features].corr()
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
+    st.pyplot(fig)
 
 # ---------------- PREDICTION ----------------
 else:
